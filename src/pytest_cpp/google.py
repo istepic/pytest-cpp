@@ -26,11 +26,10 @@ class GoogleTestFacade(AbstractFacade):
         harness_collect: Sequence[str] = (),
     ) -> bool:
         args = make_cmdline(harness_collect, executable, ["--help"])
+        args = " ".join(args)
         try:
             output = subprocess.check_output(
-                args,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
+                args, stderr=subprocess.STDOUT, universal_newlines=True, shell=True
             )
         except (subprocess.CalledProcessError, OSError):
             return False
@@ -52,10 +51,9 @@ class GoogleTestFacade(AbstractFacade):
           CanGetNextPrime
         """
         args = make_cmdline(harness_collect, executable, ["--gtest_list_tests"])
+        args = " ".join(args)
         output = subprocess.check_output(
-            args,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
+            args, stderr=subprocess.STDOUT, universal_newlines=True, shell=True
         )
 
         def strip_comment(x: str) -> str:
@@ -81,6 +79,7 @@ class GoogleTestFacade(AbstractFacade):
         test_id: str,
         test_args: Sequence[str] = (),
         harness: Sequence[str] = (),
+        deployed: bool = False,
     ) -> tuple[list[GoogleTestFailure] | None, str]:
         with tempfile.TemporaryDirectory(prefix="pytest-cpp") as temp_dir:
             # On Windows, ValueError is raised when path and start are on different drives.
@@ -88,6 +87,8 @@ class GoogleTestFacade(AbstractFacade):
             try:
                 xml_filename = os.path.join(os.path.relpath(temp_dir), "cpp-report.xml")
             except ValueError:
+                xml_filename = os.path.join(temp_dir, "cpp-report.xml")
+            if deployed:
                 xml_filename = os.path.join(temp_dir, "cpp-report.xml")
             args = list(
                 make_cmdline(
@@ -99,8 +100,9 @@ class GoogleTestFacade(AbstractFacade):
             args.extend(test_args)
 
             try:
+                args = " ".join(args)
                 output = subprocess.check_output(
-                    args, stderr=subprocess.STDOUT, universal_newlines=True
+                    args, stderr=subprocess.STDOUT, universal_newlines=True, shell=True
                 )
             except subprocess.CalledProcessError as e:
                 output = e.output
@@ -120,6 +122,10 @@ class GoogleTestFacade(AbstractFacade):
                     )
 
                     return [failure], output
+
+            if deployed:
+                cmd = f"ez-scp :{xml_filename} {xml_filename}"
+                subprocess.run(cmd.split(" "), check=True)
 
             results = self._parse_xml(xml_filename)
 
